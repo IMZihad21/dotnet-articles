@@ -23,7 +23,7 @@ COPY ["MyApplication.WebAPI/MyApplication.WebAPI.csproj", "MyApplication.WebAPI/
 RUN dotnet restore "./MyApplication.WebAPI/MyApplication.WebAPI.csproj" -r "$RUNTIME"
 ```
 
-We copy only the project file first to take advantage of Docker’s caching mechanism, which avoids re-downloading dependencies unless the `csproj` file changes. The runtime (`linux-musl-x64`) ensures the restored packages are compatible with the target Linux environment.
+We copy only the project file first to take advantage of Dockerâ€™s caching mechanism, which avoids re-downloading dependencies unless the `csproj` file changes. The runtime (`linux-musl-x64`) ensures the restored packages are compatible with the target Linux environment.
 
 ```dockerfile
 COPY . .
@@ -41,7 +41,7 @@ RUN dotnet publish "./MyApplication.WebAPI/MyApplication.WebAPI.csproj" \
     /p:PublishReadyToRun=true
 ```
 
-Here’s a breakdown of the key options used in the dotnet publish command:
+Hereâ€™s a breakdown of the key options used in the dotnet publish command:
 
 - `-r "$RUNTIME"`: Ensures the published app is optimized for the specified runtime (linux-musl-x64).
 - `--self-contained false`: Keeps the application lightweight by relying on the shared .NET runtime instead of bundling it.
