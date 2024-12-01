@@ -1,4 +1,4 @@
-In this article, I’ll guide you through implementing a custom role-based authorization handler in ASP.NET Core using JWT authentication. This approach allows you to dynamically control API route access based on user roles and route permissions, making it ideal for applications with complex role hierarchies or permissions.
+In this article, Iâ€™ll guide you through implementing a custom role-based authorization handler in ASP.NET Core using JWT authentication. This approach allows you to dynamically control API route access based on user roles and route permissions, making it ideal for applications with complex role hierarchies or permissions.
 
 Our solution involves:
 
@@ -6,11 +6,11 @@ Our solution involves:
 - Dynamic permissions management based on role-based access.
 - Configuring role-specific routes and frontend permissions for API endpoints.
 
-Let’s dive into the code and see how to set up this custom authorization handler in ASP.NET Core.
+Letâ€™s dive into the code and see how to set up this custom authorization handler in ASP.NET Core.
 
 **Setting Up the Custom Authorization Requirement**
 
-First, let’s define a custom authorization requirement, `RoleBasedRequirement`, that takes a `requireValidation` parameter. This allows us to configure whether to enforce role-based validation or not, which is useful for environments like development where you might not want to enforce permissions.
+First, letâ€™s define a custom authorization requirement, `RoleBasedRequirement`, that takes a `requireValidation` parameter. This allows us to configure whether to enforce role-based validation or not, which is useful for environments like development where you might not want to enforce permissions.
 
 ```csharp
 public class RoleBasedRequirement(bool requireValidation) : IAuthorizationRequirement
@@ -36,7 +36,7 @@ public static class GloballyAllowedHttpPath
 
 **Implementing the Custom Authorization Handler**
 
-Now we’ll build `RoleBasedAuthorizationHandler`, the core of our setup. This handler evaluates the request's API route and checks the user’s role-based permissions, using a user manager dependency (`IUserManager`) to fetch the role permissions dynamically.
+Now weâ€™ll build `RoleBasedAuthorizationHandler`, the core of our setup. This handler evaluates the request's API route and checks the userâ€™s role-based permissions, using a user manager dependency (`IUserManager`) to fetch the role permissions dynamically.
 
 ```csharp
 public class RoleBasedAuthorizationHandler : AuthorizationHandler<RoleBasedRequirement>
