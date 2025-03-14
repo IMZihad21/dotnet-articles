@@ -24,34 +24,34 @@ Our solution includes three core components:
 Get logged in user and create QR Code by generating a totp token. Encrypt the token with user email as encryption secret to bind the token with email. Send the encrypted token and QR to response.
 
 ```csharp
-[HttpGet("GenerateAuthenticatorQrCode")]
-public async Task<IActionResult> GenerateAuthenticatorQRCode()
+[HttpGet("GenerateSecureQrCode")]
+public async Task<IActionResult> GenerateSecureQrCode()
 {
-    var currentUser = await GetAuthenticatedUser();
+    var activeUser = await RetrieveAuthenticatedUser();
 
-    if (currentUser == null || string.IsNullOrEmpty(currentUser.Email))
+    if (activeUser == null || string.IsNullOrEmpty(activeUser.Email))
     {
-        return BadRequest("User not found or email is missing.");
+        return BadRequest("User not found or missing email.");
     }
 
-    var secretKey = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20));
-    string appIssuer = Uri.EscapeDataString(ConfigurationManager.AppSettings["AppIssuer"]);
-    string userEmail = Uri.EscapeDataString(currentUser.Email);
-    string otpAuthUri = $"otpauth://totp/{appIssuer}:{userEmail}?secret={secretKey}&issuer={appIssuer}&algorithm=SHA1&digits=6&period=30";
+    var secureKey = Base32Encoding.ToString(KeyGeneration.GenerateRandomKey(20));
+    string issuer = Uri.EscapeDataString(ConfigurationManager.AppSettings["ServiceIssuer"]);
+    string encodedEmail = Uri.EscapeDataString(activeUser.Email);
+    string otpUri = $"otpauth://totp/{issuer}:{encodedEmail}?secret={secureKey}&issuer={issuer}&algorithm=SHA1&digits=6&period=30";
 
-    using var qrCodeGenerator = new QRCodeGenerator();
-    using var qrData = qrCodeGenerator.CreateQrCode(otpAuthUri, QRCodeGenerator.ECCLevel.Q);
+    using var qrGenerator = new QRCodeGenerator();
+    using var qrData = qrGenerator.CreateQrCode(otpUri, QRCodeGenerator.ECCLevel.Q);
     using var qrCode = new PngByteQRCode(qrData);
 
-    string qrBase64String = Convert.ToBase64String(qrCode.GetGraphic(20));
-    string qrImage = $"data:image/png;base64,{qrBase64String}";
+    string base64QrCode = Convert.ToBase64String(qrCode.GetGraphic(20));
+    string qrCodeImage = $"data:image/png;base64,{base64QrCode}";
 
-    var encryptedKey = EncryptionHelper.Encrypt(secretKey, currentUser.Email);
+    var securedKey = CryptoHelper.Encrypt(secureKey, activeUser.Email);
 
-    return Ok(new AuthenticatorQRCodeResponse
+    return Ok(new SecureQrCodeResponse
     {
-        Base64Image = qrImage,
-        SecretKey = encryptedKey,
+        QrImageBase64 = qrCodeImage,
+        SecuredKey = securedKey,
     });
 }
 ```
@@ -61,25 +61,25 @@ public async Task<IActionResult> GenerateAuthenticatorQRCode()
 Get encrypted token and OTP from user via DTO of request. Get logged in user and decrypt the token by user email. Validate if provided OTP is valid. If valid, set the encrypted token to user data for future verifications.
 
 ```csharp
-[HttpPut("UpdateAuthenticatorForUser")]
-public async Task<IActionResult> UpdateAuthenticatorForUser(AuthenticatorUpdateRequest request)
+[HttpPut("ModifyUserAuthenticator")]
+public async Task<IActionResult> ModifyUserAuthenticator(AuthenticatorModifyRequest request)
 {
-    var currentUser = await GetAuthenticatedUser();
+    var activeUser = await RetrieveAuthenticatedUser();
 
-    if (currentUser == null || string.IsNullOrEmpty(currentUser.Email))
+    if (activeUser == null || string.IsNullOrEmpty(activeUser.Email))
     {
-        return BadRequest("User not found or email is missing.");
+        return BadRequest("User not found or missing email.");
     }
 
-    var decryptedKey = EncryptionHelper.Decrypt(request.SecretKey, currentUser.Email);
+    var unencryptedKey = CryptoHelper.Decrypt(request.SecuredKey, activeUser.Email);
 
-    if (!IsOtpValid(decryptedKey, request.OTP))
+    if (!ValidateOtp(unencryptedKey, request.OTP))
     {
         return BadRequest("Invalid OTP.");
     }
 
-    currentUser.AuthenticatorKey = decryptedKey;
-    _unitOfWork.Users.Update(currentUser);
+    activeUser.AuthKey = unencryptedKey;
+    _unitOfWork.Users.Update(activeUser);
     await _unitOfWork.SaveChangesAsync();
 
     return Ok(true);
@@ -92,23 +92,23 @@ Check if user credentials are ok and create a temporary token with user id and s
 
 ```csharp
 [AllowAnonymous]
-[HttpPost("LoginUser")]
-public async Task<IActionResult> LoginUser(UserLoginRequest request)
+[HttpPost("AuthenticateUser")]
+public async Task<IActionResult> AuthenticateUser(UserAuthRequest request)
 {
-    #region User Authentication Logic
-    // User authentication logic (e.g., check credentials) goes here
+    #region Authentication Logic
+    // Logic to verify user credentials
     #endregion
 
-    var authenticatedUser = await GetUserByCredentials(request);
+    var verifiedUser = await FetchUserByCredentials(request);
 
-    if (authenticatedUser == null)
+    if (verifiedUser == null)
     {
         return Unauthorized("Invalid credentials.");
     }
 
-    var encryptedUserSecret = EncryptionHelper.Encrypt(authenticatedUser.Id.ToString(), ConfigurationManager.AppSettings["UserSigningKey"]);
+    var encodedUserSecret = CryptoHelper.Encrypt(verifiedUser.Id.ToString(), ConfigurationManager.AppSettings["SigningKey"]);
 
-    return Ok(new AuthenticationResponse { EncryptedOtpSecret = encryptedUserSecret });
+    return Ok(new AuthResponse { EncodedOtpKey = encodedUserSecret });
 }
 ```
 
@@ -118,38 +118,38 @@ Check if user credentials are ok and create a temporary token with user id and s
 
 ```csharp
 [AllowAnonymous]
-[HttpPost("LoginWithOtp")]
-public async Task<IActionResult> LoginWithOtp(LoginWithOtpRequest request)
+[HttpPost("VerifyOtpLogin")]
+public async Task<IActionResult> VerifyOtpLogin(OtpLoginRequest request)
 {
-    #region Validate DTO
-    // Validate incoming request DTO (e.g., check required fields)
+    #region Validate Input
+    // Ensure all necessary request fields are present
     #endregion
 
-    var decryptedUserId = EncryptionHelper.Decrypt(request.EncryptedOtpSecret, ConfigurationManager.AppSettings["UserSigningKey"]);
+    var decryptedUserId = CryptoHelper.Decrypt(request.EncodedOtpKey, ConfigurationManager.AppSettings["SigningKey"]);
     if (!long.TryParse(decryptedUserId, out long userId))
         return BadRequest("Invalid user identifier.");
 
-    var user = await _unitOfWork.Users.GetById(userId);
-    if (user == null)
+    var userAccount = await _unitOfWork.Users.GetById(userId);
+    if (userAccount == null)
         return Unauthorized("User not found.");
 
-    var isValidOtp = IsOtpValid(user.AuthenticatorKey, request.OTP);
-    if (!isValidOtp)
+    var otpValidation = ValidateOtp(userAccount.AuthKey, request.OTP);
+    if (!otpValidation)
         return BadRequest("Invalid OTP.");
 
-    var (jwtToken, jwtExpiry) = GenerateJwtToken(user);
+    var (accessToken, tokenExpiry) = GenerateAccessToken(userAccount);
     var (refreshToken, refreshExpiry) = GenerateRefreshToken();
 
-    var tokenResponse = new UserTokenResponse
+    var sessionResponse = new UserSessionResponse
     {
-        JwtToken = jwtToken,
-        JwtExpiresAt = jwtExpiry,
+        AccessToken = accessToken,
+        AccessTokenExpiry = tokenExpiry,
         RefreshToken = refreshToken,
-        RefreshExpiresAt = refreshExpiry
+        RefreshTokenExpiry = refreshExpiry
     };
 
-    await _unitOfWork.Tokens.Save(tokenResponse);
-    return Ok(tokenResponse);
+    await _unitOfWork.Tokens.Save(sessionResponse);
+    return Ok(sessionResponse);
 }
 ```
 
@@ -158,13 +158,13 @@ public async Task<IActionResult> LoginWithOtp(LoginWithOtpRequest request)
 Checks the provided OTP against a secret token and returns boolean response. Allowed two future windows to mitigate issues with server and client system clock slight mismatches.
 
 ```csharp
-private static bool IsOtpValid(string secretKey, string otp)
+private static bool ValidateOtp(string secretKey, string otpCode)
 {
-    if (string.IsNullOrEmpty(secretKey) || string.IsNullOrEmpty(otp))
+    if (string.IsNullOrEmpty(secretKey) || string.IsNullOrEmpty(otpCode))
         return false;
 
-    var totp = new Totp(Base32Encoding.ToBytes(secretKey));
-    return totp.VerifyTotp(otp, out _, new VerificationWindow(previous: 0, future: 2));
+    var totpGenerator = new Totp(Base32Encoding.ToBytes(secretKey));
+    return totpGenerator.VerifyTotp(otpCode, out _, new VerificationWindow(previous: 0, future: 2));
 }
 ```
 
